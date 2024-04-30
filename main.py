@@ -1,6 +1,7 @@
 import telebot
 import requests
 from telebot import types
+from googletrans import Translator
 
 with open('token.txt') as f:
     TOKEN = f.read().strip()
@@ -19,6 +20,12 @@ criteria_dict = {
     'По типу продукта': ['beef', 'fish', 'vegetables', 'fruits', 'dairy']
 }
 
+translator = Translator()
+
+
+def translate_to_russian(text):
+    return translator.translate(text, src='en', dest='ru').text
+
 
 def find_recipes_by_criteria(criteria):
     url = f'https://api.edamam.com/search?q={criteria}&app_id={APP_ID}&app_key={API_KEY}'
@@ -31,7 +38,9 @@ def find_recipes_by_criteria(criteria):
     recipes = []
     for hit in data.get('hits', []):
         recipe = hit['recipe']
-        recipes.append((recipe['label'], recipe['ingredientLines'], recipe['url']))
+        title_ru = translate_to_russian(recipe['label'])
+        ingredients_ru = [translate_to_russian(ingredient) for ingredient in recipe['ingredientLines']]
+        recipes.append((title_ru, ingredients_ru, recipe['url']))
     return recipes
 
 
@@ -74,10 +83,20 @@ def handle_search(message):
             for recipe_title, recipe_ingredients, recipe_url in recipes:
                 response_message = f"**Рецепт:** {recipe_title}\n\n**Ингредиенты:**\n{', '.join(recipe_ingredients)}\n\n[Подробнее]({recipe_url})"
                 bot.send_message(message.chat.id, response_message, parse_mode='Markdown')
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add(types.KeyboardButton('выбрать другие критерии'))
+            bot.send_message(message.chat.id, "Хотите начать новый поиск?", reply_markup=markup)
         else:
             bot.reply_to(message, "По вашему запросу не найдено рецептов. Попробуйте другие критерии.")
     else:
         bot.reply_to(message, "Пожалуйста, выберите критерии поиска с помощью кнопок.")
+
+
+@bot.message_handler(func=lambda message: message.text == 'Новый поиск')
+def handle_new_search(message):
+    bot.send_message(message.chat.id, "Выберите критерии для нового поиска:",
+                     reply_markup=types.ReplyKeyboardMarkup(resize_keyboard=True).add(
+                         *[types.KeyboardButton(criteria) for criteria in criteria_dict.keys()]))
 
 
 bot.polling()
